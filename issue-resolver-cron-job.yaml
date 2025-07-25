@@ -27,9 +27,15 @@ spec:
               # Extract repo full name from URL (e.g., owner/repo from https://github.com/owner/repo.git)
               repo_full_name=$(echo "${repo}" | sed 's|.*github\.com/||' | sed 's|\.git$||')
               
+              # Extract just the repo name (second part after /) and make it DNS compliant
+              repo_name=$(echo "${repo_full_name}" | cut -d'/' -f2 | tr '_' '-')
+              
+              # Create volumeClaimTemplate file
+              printf 'metadata:\n  name: openhands-runtime-%s-pvc\nspec:\n  accessModes:\n    - ReadWriteOnce\n  resources:\n    requests:\n      storage: 1Gi\n' "${repo_name}" > /tmp/pvc-template-${repo_name}.yaml
+              
               echo "Triggering pipeline for repo: ${repo} (${repo_full_name})"
               /tmp/tkn pipeline start openhands-issue-resolver-pipeline \
-                --workspace name=workspace,claimName=openhands-runtime-simple-pvc \
+                --workspace name=workspace,volumeClaimTemplateFile=/tmp/pvc-template-${repo_name}.yaml \
                 --param repo-url="${repo}" \
                 --param llm-model="openai/qwen/qwen3-235b-a22b-07-25:free" \
                 --param llm-base-url="https://openrouter.ai/api/v1" \
@@ -37,7 +43,6 @@ spec:
                 --param event-type="issue" \
                 --param repo-full-name="${repo_full_name}" \
                 --param username="RHRolun" \
-                # --param issue-number="1" \
                 --param namespace="openhands-pipeline" || echo "Failed to start pipeline for $repo"
               
             done < /mnt/config/repos

@@ -35,11 +35,6 @@ spec:
     - name: username
       type: string
       description: Git username that owns the PAT
-    # Issue context parameters
-    - name: issue-number
-      type: string
-      description: Issue number
-      default: ""
     - name: namespace
       type: string
       description: Namespace to run OpenHands 
@@ -87,8 +82,6 @@ spec:
           value: $(params.repo-full-name)
         - name: username
           value: $(params.username)
-        - name: issue-number
-          value: $(params.issue-number)
         - name: namespace
           value: openhands-pipeline
       runAfter:
@@ -124,9 +117,6 @@ spec:
     - name: username
       type: string
       description: Git username that owns the PAT
-    - name: issue-number
-      type: string
-      description: Issue number
     - name: namespace
       type: string
       description: Namespace for the pipeline
@@ -150,6 +140,9 @@ spec:
         #!/bin/bash
         set -e
 
+        curl -sLo /tmp/jq https://github.com/stedolan/jq/releases/download/jq-1.8.1/jq-linux64 && \
+        chmod +x /tmp/jq
+
         export LLM_BASE_URL=$(params.llm-base-url)
         export LLM_MODEL=$(params.llm-model)
         export KUBERNETES_NAMESPACE=$(params.namespace)
@@ -162,7 +155,42 @@ spec:
         
         sed -i 's/docker/kubernetes/g' /app/openhands/resolver/issue_resolver.py
 
-        sed -i 's/session_id = sid or generate_sid(config)/session_id = "simple"/' /app/openhands/core/setup.py
+        REPO_NAME=$(echo "$(params.repo-full-name)" | cut -d'/' -f2 | tr '_' '-')
+        sed -i "s/session_id = sid or generate_sid(config)/session_id = \"${REPO_NAME}\"/" /app/openhands/core/setup.py
 
-        python -m openhands.resolver.resolve_issue --selected-repo $(params.repo-full-name) --issue-number $(params.issue-number) --issue-type $(params.event-type) --username $(params.username) --token $PAT_TOKEN --max-iterations $(params.max-iterations)
-        python -m openhands.resolver.send_pull_request --selected-repo $(params.repo-full-name) --issue-number $(params.issue-number) --username $(params.username) --token $PAT_TOKEN --pr-type draft
+        # Check for open issues in the repository
+        echo "🔍 Checking for open issues in $(params.repo-full-name)..."
+        ISSUES=$(curl -s -H "Authorization: token $PAT_TOKEN" \
+          "https://api.github.com/repos/$(params.repo-full-name)/issues?state=open&labels=openhands&per_page=100" | \
+          /tmp/jq -r '.[] | select(.pull_request == null) | .number' | head -10)
+
+        if [ -z "$ISSUES" ]; then
+          echo "❌ No open issues found in $(params.repo-full-name)"
+          exit 0
+        fi
+
+        echo "📝 Found open issues: $(echo $ISSUES | tr '\n' ' ')"
+
+        # Process each issue
+        for issue_number in $ISSUES; do
+          echo "🚀 Processing issue #${issue_number}..."
+          
+          python -m openhands.resolver.resolve_issue \
+            --selected-repo $(params.repo-full-name) \
+            --issue-number ${issue_number} \
+            --issue-type $(params.event-type) \
+            --username $(params.username) \
+            --token $PAT_TOKEN \
+            --max-iterations $(params.max-iterations) || echo "❌ Failed to resolve issue #${issue_number}"
+          
+          python -m openhands.resolver.send_pull_request \
+            --selected-repo $(params.repo-full-name) \
+            --issue-number ${issue_number} \
+            --username $(params.username) \
+            --token $PAT_TOKEN \
+            --pr-type draft || echo "❌ Failed to create PR for issue #${issue_number}"
+            
+          echo "✅ Completed processing issue #${issue_number}"
+        done
+
+        echo "🎉 Finished processing all open issues"
