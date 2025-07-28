@@ -86,6 +86,9 @@ spec:
           value: openhands-pipeline
       runAfter:
         - clone-repository
+
+# TODO: add a notification task to send results (failure) to a Slack channel
+
 ---
 apiVersion: tekton.dev/v1beta1
 kind: Task
