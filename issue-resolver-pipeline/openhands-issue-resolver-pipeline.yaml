@@ -2,7 +2,7 @@
 apiVersion: tekton.dev/v1beta1
 kind: Pipeline
 metadata:
-  name: openhands-issue-resolver-pipeline
+  name: openhands-issue-resolver-pipeline-2
 spec:
   description: Simple OpenHands pipeline that processes specified repositories
   params:
@@ -15,10 +15,6 @@ spec:
       type: string
       description: LLM model to use
       default: "openai/qwen/qwen3-235b-a22b-07-25:free"
-    - name: llm-base-url
-      type: string
-      description: Base URL for the LLM API
-      default: "https://openrouter.ai/api/v1"
     - name: max-iterations
       type: string
       description: Maximum iterations for OpenHands
@@ -37,7 +33,10 @@ spec:
       description: Git username that owns the PAT
     - name: namespace
       type: string
-      description: Namespace to run OpenHands 
+      description: Namespace to run OpenHands
+    - name: issue-number
+      type: string
+      description: Specific issue number to process 
   workspaces:
     - name: workspace
       description: Shared workspace for processing
@@ -66,7 +65,7 @@ spec:
           value: "false"
     - name: openhands-issue-resolver
       taskRef:
-        name: openhands-issue-resolver
+        name: openhands-issue-resolver-2
       params:
         - name: repo-url
           value: $(params.repo-url)
@@ -74,8 +73,6 @@ spec:
           value: $(params.llm-model)
         - name: max-iterations
           value: $(params.max-iterations)
-        - name: llm-base-url
-          value: $(params.llm-base-url)
         - name: event-type
           value: $(params.event-type)
         - name: repo-full-name
@@ -84,6 +81,8 @@ spec:
           value: $(params.username)
         - name: namespace
           value: openhands-pipeline
+        - name: issue-number
+          value: $(params.issue-number)
       runAfter:
         - clone-repository
 
@@ -93,7 +92,7 @@ spec:
 apiVersion: tekton.dev/v1beta1
 kind: Task
 metadata:
-  name: openhands-issue-resolver
+  name: openhands-issue-resolver-2
 spec:
   description: Process a single repository with OpenHands
   params:
@@ -107,10 +106,6 @@ spec:
     - name: max-iterations
       type: string
       description: Maximum iterations
-    - name: llm-base-url
-      type: string
-      description: Base URL for the LLM API
-      default: "https://api.openai.com/v1"
     - name: event-type
       type: string
       description: GitHub event type
@@ -123,6 +118,9 @@ spec:
     - name: namespace
       type: string
       description: Namespace for the pipeline
+    - name: issue-number
+      type: string
+      description: Specific issue number to process
   steps:
     - name: setup-and-process
       image: quay.io/rlundber/openhands-main:0.2
@@ -146,7 +144,6 @@ spec:
         curl -sLo /tmp/jq https://github.com/stedolan/jq/releases/download/jq-1.8.1/jq-linux64 && \
         chmod +x /tmp/jq
 
-        export LLM_BASE_URL=$(params.llm-base-url)
         export LLM_MODEL=$(params.llm-model)
         export KUBERNETES_NAMESPACE=$(params.namespace)
         
@@ -161,39 +158,23 @@ spec:
         REPO_NAME=$(echo "$(params.repo-full-name)" | cut -d'/' -f2 | tr '_' '-')
         sed -i "s/session_id = sid or generate_sid(config)/session_id = \"${REPO_NAME}\"/" /app/openhands/core/setup.py
 
-        # Check for open issues in the repository
-        echo "🔍 Checking for open issues in $(params.repo-full-name)..."
-        ISSUES=$(curl -s -H "Authorization: token $PAT_TOKEN" \
-          "https://api.github.com/repos/$(params.repo-full-name)/issues?state=open&labels=openhands&per_page=100" | \
-          /tmp/jq -r '.[] | select(.pull_request == null) | .number' | head -10)
-
-        if [ -z "$ISSUES" ]; then
-          echo "❌ No open issues found in $(params.repo-full-name)"
-          exit 0
-        fi
-
-        echo "📝 Found open issues: $(echo $ISSUES | tr '\n' ' ')"
-
-        # Process each issue
-        for issue_number in $ISSUES; do
-          echo "🚀 Processing issue #${issue_number}..."
+        # Process the specific issue number provided
+        issue_number=$(params.issue-number)
+        echo "🚀 Processing issue #${issue_number} for $(params.repo-full-name)..."
+        
+        python -m openhands.resolver.resolve_issue \
+          --selected-repo $(params.repo-full-name) \
+          --issue-number ${issue_number} \
+          --issue-type $(params.event-type) \
+          --username $(params.username) \
+          --token $PAT_TOKEN \
+          --max-iterations $(params.max-iterations) || echo "❌ Failed to resolve issue #${issue_number}"
+        
+        python -m openhands.resolver.send_pull_request \
+          --selected-repo $(params.repo-full-name) \
+          --issue-number ${issue_number} \
+          --username $(params.username) \
+          --token $PAT_TOKEN \
+          --pr-type draft || echo "❌ Failed to create PR for issue #${issue_number}"
           
-          python -m openhands.resolver.resolve_issue \
-            --selected-repo $(params.repo-full-name) \
-            --issue-number ${issue_number} \
-            --issue-type $(params.event-type) \
-            --username $(params.username) \
-            --token $PAT_TOKEN \
-            --max-iterations $(params.max-iterations) || echo "❌ Failed to resolve issue #${issue_number}"
-          
-          python -m openhands.resolver.send_pull_request \
-            --selected-repo $(params.repo-full-name) \
-            --issue-number ${issue_number} \
-            --username $(params.username) \
-            --token $PAT_TOKEN \
-            --pr-type draft || echo "❌ Failed to create PR for issue #${issue_number}"
-            
-          echo "✅ Completed processing issue #${issue_number}"
-        done
-
-        echo "🎉 Finished processing all open issues"
+        echo "✅ Completed processing issue #${issue_number}"
