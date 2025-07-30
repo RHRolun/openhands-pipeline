@@ -36,7 +36,10 @@ spec:
       description: Namespace to run OpenHands
     - name: issue-number
       type: string
-      description: Specific issue number to process 
+      description: Specific issue number to process
+    - name: pvc-name
+      type: string
+      description: PVC name to use for session ID 
   workspaces:
     - name: workspace
       description: Shared workspace for processing
@@ -83,6 +86,8 @@ spec:
           value: openhands-pipeline
         - name: issue-number
           value: $(params.issue-number)
+        - name: pvc-name
+          value: $(params.pvc-name)
       runAfter:
         - clone-repository
 
@@ -121,6 +126,9 @@ spec:
     - name: issue-number
       type: string
       description: Specific issue number to process
+    - name: pvc-name
+      type: string
+      description: PVC name to use for session ID
   steps:
     - name: setup-and-process
       image: quay.io/rlundber/openhands-main:0.2
@@ -155,8 +163,8 @@ spec:
         
         sed -i 's/docker/kubernetes/g' /app/openhands/resolver/issue_resolver.py
 
-        REPO_NAME=$(echo "$(params.repo-full-name)" | cut -d'/' -f2 | tr '_' '-')
-        sed -i "s/session_id = sid or generate_sid(config)/session_id = \"${REPO_NAME}\"/" /app/openhands/core/setup.py
+        PVC_NAME=$(params.pvc-name)
+        sed -i "s/session_id = sid or generate_sid(config)/session_id = \"${PVC_NAME}\"/" /app/openhands/core/setup.py
 
         # Process the specific issue number provided
         issue_number=$(params.issue-number)

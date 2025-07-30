@@ -54,7 +54,8 @@ spec:
               # Process each issue - start one pipeline per issue
               for issue_number in $ISSUES; do
                 # Create PVC template and capture the generated name
-                PVC_DESIRED_NAME="${repo_name}-issue-${issue_number}-pvc"
+                PVC_DESIRED_NAME="openhands-runtime-${repo_name}-issue-${issue_number}-pvc"
+                PVC_PARAM_NAME="${repo_name}-issue-${issue_number}-pvc"
                 printf 'apiVersion: v1\nkind: PersistentVolumeClaim\nmetadata:\n  name: %s\nspec:\n  accessModes:\n    - ReadWriteOnce\n  resources:\n    requests:\n      storage: 1Gi\n' "${PVC_DESIRED_NAME}" > /tmp/pvc-template-${repo_name}-${issue_number}.yaml
                 
                 # Check if PVC already exists, create if not
@@ -74,7 +75,8 @@ spec:
                   --param llm-model="gemini/gemini-2.5-pro" \
                   --param max-iterations="10" \
                   --param event-type="issue" \
-                  --param repo-full-name="$PVC_NAME" \
+                  --param pvc-name="${PVC_PARAM_NAME}" \
+                  --param repo-full-name="${repo_full_name}" \
                   --param username="RHRolun" \
                   --param namespace="openhands-pipeline" \
                   --param issue-number="${issue_number}" || echo "Failed to start pipeline for issue #${issue_number} in $repo"
