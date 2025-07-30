@@ -1,7 +1,7 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: start-issue-resolver-pipelines-2
+  name: start-issue-resolver-pipelines
 spec:
   template:
     spec:
@@ -56,7 +56,7 @@ spec:
                 # Create PVC template and capture the generated name
                 PVC_DESIRED_NAME="openhands-runtime-${repo_name}-issue-${issue_number}-pvc"
                 PVC_PARAM_NAME="${repo_name}-issue-${issue_number}"
-                printf 'apiVersion: v1\nkind: PersistentVolumeClaim\nmetadata:\n  name: %s\nspec:\n  accessModes:\n    - ReadWriteOnce\n  resources:\n    requests:\n      storage: 1Gi\n' "${PVC_DESIRED_NAME}" > /tmp/pvc-template-${repo_name}-${issue_number}.yaml
+                printf 'apiVersion: v1\nkind: PersistentVolumeClaim\nmetadata:\n  name: %s\nspec:\n  storageClassName: ocs-storagecluster-cephfs\n  volumeMode: Filesystem\n  accessModes:\n    - ReadWriteMany\n  resources:\n    requests:\n      storage: 1Gi\n' "${PVC_DESIRED_NAME}" > /tmp/pvc-template-${repo_name}-${issue_number}.yaml
                 
                 # Check if PVC already exists, create if not
                 if oc get pvc "${PVC_DESIRED_NAME}" >/dev/null 2>&1; then

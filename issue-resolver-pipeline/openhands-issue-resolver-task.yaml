@@ -1,0 +1,93 @@
+---
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: openhands-issue-resolver
+spec:
+  description: Process a single repository with OpenHands
+  params:
+    # Standard pipeline parameters
+    - name: repo-url
+      type: string
+      description: Repository URL
+    - name: llm-model
+      type: string
+      description: LLM model to use
+    - name: max-iterations
+      type: string
+      description: Maximum iterations
+    - name: event-type
+      type: string
+      description: GitHub event type
+    - name: repo-full-name
+      type: string
+      description: Repository full name (org/repo)
+    - name: username
+      type: string
+      description: Git username that owns the PAT
+    - name: namespace
+      type: string
+      description: Namespace for the pipeline
+    - name: issue-number
+      type: string
+      description: Specific issue number to process
+    - name: pvc-name
+      type: string
+      description: PVC name to use for session ID
+  steps:
+    - name: setup-and-process
+      image: quay.io/rlundber/openhands-main:0.2
+      env:
+        # OpenHands Configuration
+        - name: LLM_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: openhands-secrets
+              key: llm-api-key
+        - name: PAT_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: openhands-secrets
+              key: pat-token
+
+      script: |
+        #!/bin/bash
+        set -e
+
+        curl -sLo /tmp/jq https://github.com/stedolan/jq/releases/download/jq-1.8.1/jq-linux64 && \
+        chmod +x /tmp/jq
+
+        export LLM_MODEL=$(params.llm-model)
+        export KUBERNETES_NAMESPACE=$(params.namespace)
+        
+        echo "🚀 Starting OpenHands processing..."
+        echo "Repository: $(params.repo-url)"
+        echo "LLM Model: $(params.llm-model)"
+        echo "Max Iterations: $(params.max-iterations)"
+        echo "Event Type: $(params.event-type)"
+        
+        sed -i 's/docker/kubernetes/g' /app/openhands/resolver/issue_resolver.py
+
+        PVC_NAME=$(params.pvc-name)
+        sed -i "s/session_id = sid or generate_sid(config)/session_id = \"${PVC_NAME}\"/" /app/openhands/core/setup.py
+
+        # Process the specific issue number provided
+        issue_number=$(params.issue-number)
+        echo "🚀 Processing issue #${issue_number} for $(params.repo-full-name)..."
+        
+        python -m openhands.resolver.resolve_issue \
+          --selected-repo $(params.repo-full-name) \
+          --issue-number ${issue_number} \
+          --issue-type $(params.event-type) \
+          --username $(params.username) \
+          --token $PAT_TOKEN \
+          --max-iterations $(params.max-iterations) || echo "❌ Failed to resolve issue #${issue_number}"
+        
+        python -m openhands.resolver.send_pull_request \
+          --selected-repo $(params.repo-full-name) \
+          --issue-number ${issue_number} \
+          --username $(params.username) \
+          --token $PAT_TOKEN \
+          --pr-type ready || echo "❌ Failed to create PR for issue #${issue_number}"
+          
+        echo "✅ Completed processing issue #${issue_number}"
