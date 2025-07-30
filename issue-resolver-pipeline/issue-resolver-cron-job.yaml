@@ -8,7 +8,13 @@ spec:
       serviceAccountName: pipeline-trigger-sa
       containers:
       - name: trigger-pipelines
-        image: registry.redhat.io/ubi8/toolbox@sha256:ce43afc4a16efbf1308b099e9ea5d1ade2a1b03db387a712c7cc1afdef73359f
+        image: registry.redhat.io/openshift4/ose-cli:latest
+        env:
+        - name: PAT_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: openhands-secrets
+              key: pat-token
         command:
           - /bin/sh
           - -c
@@ -17,33 +23,64 @@ spec:
             curl -sL https://mirror.openshift.com/pub/openshift-v4/clients/pipeline/latest/tkn-linux-amd64.tar.gz | tar --no-same-owner -xzf - -C /tmp tkn 
             chmod -R 755 /tmp/tkn
 
+            curl -sLo /tmp/jq https://github.com/stedolan/jq/releases/download/jq-1.8.1/jq-linux64
+            chmod +x /tmp/jq
+
             set -euo pipefail
 
             echo "going into while loop"
 
             while IFS= read -r repo || [ -n "$repo" ]; do
               echo "Repository: $repo"
-            
+
               # Extract repo full name from URL (e.g., owner/repo from https://github.com/owner/repo.git)
               repo_full_name=$(echo "${repo}" | sed 's|.*github\.com/||' | sed 's|\.git$||')
               
               # Extract just the repo name (second part after /) and make it DNS compliant
               repo_name=$(echo "${repo_full_name}" | cut -d'/' -f2 | tr '_' '-')
               
-              # Create volumeClaimTemplate file
-              printf 'metadata:\n  name: openhands-runtime-%s-pvc\nspec:\n  accessModes:\n    - ReadWriteOnce\n  resources:\n    requests:\n      storage: 1Gi\n' "${repo_name}" > /tmp/pvc-template-${repo_name}.yaml
-              
-              echo "Triggering pipeline for repo: ${repo} (${repo_full_name})"
-              /tmp/tkn pipeline start openhands-issue-resolver-pipeline \
-                --workspace name=workspace,volumeClaimTemplateFile=/tmp/pvc-template-${repo_name}.yaml \
-                --param repo-url="${repo}" \
-                --param llm-model="openai/qwen/qwen3-235b-a22b-07-25:free" \
-                --param llm-base-url="https://openrouter.ai/api/v1" \
-                --param max-iterations="10" \
-                --param event-type="issue" \
-                --param repo-full-name="${repo_full_name}" \
-                --param username="RHRolun" \
-                --param namespace="openhands-pipeline" || echo "Failed to start pipeline for $repo"
+              echo "🔍 Checking for open issues in ${repo_full_name}..."
+              ISSUES=$(curl -s -H "Authorization: token $PAT_TOKEN" \
+                "https://api.github.com/repos/${repo_full_name}/issues?state=open&labels=openhands&per_page=100" | \
+                /tmp/jq -r '.[] | select(.pull_request == null) | .number' | head -10)
+
+              if [ -z "$ISSUES" ]; then
+                echo "❌ No open issues found in ${repo_full_name}"
+                continue
+              fi
+
+              echo "📝 Found open issues: $(echo $ISSUES | tr '\n' ' ')"
+
+              # Process each issue - start one pipeline per issue
+              for issue_number in $ISSUES; do
+                # Create PVC template and capture the generated name
+                PVC_DESIRED_NAME="openhands-runtime-${repo_name}-issue-${issue_number}-pvc"
+                PVC_PARAM_NAME="${repo_name}-issue-${issue_number}"
+                printf 'apiVersion: v1\nkind: PersistentVolumeClaim\nmetadata:\n  name: %s\nspec:\n  storageClassName: ocs-storagecluster-cephfs\n  volumeMode: Filesystem\n  accessModes:\n    - ReadWriteMany\n  resources:\n    requests:\n      storage: 1Gi\n' "${PVC_DESIRED_NAME}" > /tmp/pvc-template-${repo_name}-${issue_number}.yaml
+                
+                # Check if PVC already exists, create if not
+                if oc get pvc "${PVC_DESIRED_NAME}" >/dev/null 2>&1; then
+                  echo "📦 PVC already exists: ${PVC_DESIRED_NAME}"
+                  PVC_NAME="${PVC_DESIRED_NAME}"
+                else
+                  PVC_NAME=$(oc create -f /tmp/pvc-template-${repo_name}-${issue_number}.yaml -o name | cut -d'/' -f2)
+                  echo "📦 Created PVC: $PVC_NAME"
+                fi
+
+                echo "🚀 Starting pipeline for issue #${issue_number} in ${repo_full_name}..."
+
+                /tmp/tkn pipeline start openhands-issue-resolver-pipeline-2 \
+                  --workspace name=workspace,claimName=${PVC_NAME} \
+                  --param repo-url="${repo}" \
+                  --param llm-model="gemini/gemini-2.5-pro" \
+                  --param max-iterations="10" \
+                  --param event-type="issue" \
+                  --param pvc-name="${PVC_PARAM_NAME}" \
+                  --param repo-full-name="${repo_full_name}" \
+                  --param username="RHRolun" \
+                  --param namespace="openhands-pipeline" \
+                  --param issue-number="${issue_number}" || echo "Failed to start pipeline for issue #${issue_number} in $repo"
+              done
               
             done < /mnt/config/repos
         volumeMounts:
