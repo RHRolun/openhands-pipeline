@@ -1,0 +1,18 @@
+---
+kind: Route
+apiVersion: route.openshift.io/v1
+metadata:
+  name: openhands-mcp-git-server
+  labels:
+    app: openhands-mcp-git-server
+spec:
+  path: /
+  to:
+    kind: Service
+    name: openhands-mcp-git-server
+    weight: 100
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+  wildcardPolicy: None

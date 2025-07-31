@@ -1,0 +1,6 @@
+FROM quay.io/rlundber/openhands-main:0.2
+
+WORKDIR /app
+COPY . .
+
+CMD ["python", "mcp_git_server.py"]

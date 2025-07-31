@@ -1,0 +1,21 @@
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: coherence-info
+immutable: false
+data:
+  repos: |-
+    https://github.com/RHRolun/rhoai_whisper.git
+    https://github.com/RHRolun/test-openhands.git
+  instructions: |-
+    Please look at the full codebase and then update the README with the following improvements, if they make sense:
+    * correct any typos that you find
+    * add missing language annotations on codeblocks  
+    * if there are references to other files or other sections of the README, turn them into links
+    * make sure the readme has an h1 title towards the top
+    * make sure any existing sections in the readme are appropriately separated with headings
+    * This repo was created from the CAI team
+
+    If there are no obvious ways to improve the README, make at least one small change to make the wording clearer or friendlier.
+
+    After that, please push the changes to GitHub and open a pull request. Please create a meaningful branch name that describes the changes. If a pull request template exists in the repository, please follow it when creating the PR description.
