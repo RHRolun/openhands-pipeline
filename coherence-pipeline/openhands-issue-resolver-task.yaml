@@ -1,0 +1,161 @@
+---
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: openhands-issue-resolver
+spec:
+  description: Process a single repository with OpenHands
+  params:
+    - name: llm-model
+      type: string
+      description: LLM model to use
+    - name: max-iterations
+      type: string
+      description: Maximum iterations
+    - name: repo-full-name
+      type: string
+      description: Repository full name (org/repo)
+    - name: namespace
+      type: string
+      description: Namespace for the pipeline
+    - name: session-name
+      type: string
+      description: Session name for the OpenHands runtime
+    - name: mcp-service
+      type: string
+      description: MCP service URL and port
+  steps:
+    - name: setup-and-process
+      image: quay.io/rlundber/openhands-main:0.2
+      env:
+        - name: LLM_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: openhands-secrets
+              key: llm-api-key
+        - name: GITHUB_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: openhands-secrets
+              key: pat-token
+        - name: PROMPT
+          valueFrom:
+            configMapKeyRef:
+              name: coherence-info
+              key: prompt
+
+      script: |
+        #!/bin/bash
+        set -e
+
+        curl -sLo /tmp/jq https://github.com/stedolan/jq/releases/download/jq-1.8.1/jq-linux64 && \
+        chmod +x /tmp/jq
+
+        import asyncio
+        import os
+        from openhands.core.config import OpenHandsConfig
+        from openhands.core.config.sandbox_config import SandboxConfig
+        from openhands.core.config.llm_config import LLMConfig
+        from openhands.core.main import run_controller
+        from openhands.core.setup import create_runtime, initialize_repository_for_runtime
+        from openhands.events.action import MessageAction
+        from openhands.core.config.mcp_config import OpenHandsMCPConfigImpl
+
+        os.environ['LLM_MODEL'] = $(params.llm-model)
+        os.environ['LOG_ALL_EVENTS'] = 'true'     # Shows all events in real-time
+        os.environ['DEBUG'] = 'true'              # Enables debug logging everywhere  
+        os.environ['DEBUG_RUNTIME'] = 'true'      # Shows container logs
+        os.environ['LOG_LEVEL'] = 'DEBUG'         # Explicit debug level
+
+        session_name = $(params.session-name)
+
+        config = OpenHandsConfig(
+            runtime='kubernetes', 
+            max_iterations=$(params.max-iterations), 
+            workspace_base="/workspace", 
+            sandbox=SandboxConfig(
+                selected_repo=$(params.repo-full-name), 
+                runtime_container_image='docker.all-hands.dev/all-hands-ai/runtime:0.49-nikolaik'
+            ),
+        )
+
+        llm_config = LLMConfig(model=$(params.llm-model), api_key=os.environ['LLM_API_KEY'])
+        config.set_llm_config(llm_config)
+
+        agent_config = config.get_agent_config()
+        agent_config.enable_mcp = True
+        config.set_agent_config(agent_config)
+
+        config.mcp_host = $(params.mcp-service)+ "/mcp"
+
+        async def run_session(): 
+            runtime = create_runtime(config, sid=session_name, headless_mode=True)
+            
+            if config.mcp_host:
+                shttp_server, _ = OpenHandsMCPConfigImpl.create_default_mcp_server_config(
+                    config.mcp_host, config, None
+                )
+                if shttp_server:
+                    runtime.config.mcp.shttp_servers.append(shttp_server)
+                    print(f"Added external MCP server: {shttp_server.url}")
+            
+            await runtime.connect()
+            repo_directory = initialize_repository_for_runtime(runtime, selected_repository=config.sandbox.selected_repo)
+            print(f"Repository cloned to: {repo_directory}")
+            
+            initial_action = MessageAction(content=os.environ['PROMPT'])
+            
+            state = await run_controller(
+                config=config, 
+                initial_user_action=initial_action, 
+                runtime=runtime, 
+                sid=session_name, 
+                headless_mode=True, 
+                fake_user_response_fn=lambda state: "continue"
+            )
+            return state
+
+        def print_conversation(state):
+            print("=" * 80, "CONVERSATION SUMMARY", "=" * 80, sep="\n")
+            
+            for event in state.history:
+                if hasattr(event, 'action') and event.action.value == 'message' and hasattr(event, 'content') and hasattr(event, 'wait_for_response') and event.wait_for_response:
+                    print(f"\n🤖 AGENT: {event.content}")
+                elif hasattr(event, 'action') and event.action.value == 'message' and hasattr(event, 'content'):
+                    print(f"\n👤 USER: {event.content}")
+                elif hasattr(event, 'action') and event.action.value == 'run' and hasattr(event, 'command'):
+                    print(f"\n💻 COMMAND: {event.command.strip()}")
+                elif hasattr(event, 'observation') and event.observation.value == 'run' and hasattr(event, 'content'):
+                    content_lines = event.content.strip().split('\\n')
+                    if len(content_lines) > 5:
+                        truncated_content = '\\n'.join(content_lines[:5]) + f'\\n... (truncated {len(content_lines)-5} more lines)'
+                    else:
+                        truncated_content = event.content.strip()
+                    print(f"📤 OUTPUT: {truncated_content}")
+                elif hasattr(event, 'action') and event.action.value == 'finish':
+                    print(f"\\n✅ AGENT COMPLETED TASK:\\n   Task Completed: {event.task_completed}\\n   Final Thought: {event.final_thought}")
+                elif hasattr(event, 'action') and event.action.value == 'read' and hasattr(event, 'path'):
+                    print(f"\\n📖 READ FILE: {event.path}")
+                elif hasattr(event, 'observation') and event.observation.value == 'read' and hasattr(event, 'content'):
+                    content_lines = event.content.split('\\n')
+                    if len(content_lines) > 8:
+                        truncated_content = '\\n'.join(content_lines[:8]) + f'\\n... (truncated {len(content_lines)-8} more lines)'
+                    else:
+                        truncated_content = event.content
+                    print(f"📄 FILE CONTENT: {truncated_content}")
+            
+            print("\\n" + "=" * 80, "FINAL STATE", "=" * 80, 
+                  f"Session ID: {state.session_id}", 
+                  f"Agent State: {state.agent_state}", 
+                  f"Iterations: {state.iteration_flag.current_value}/{state.iteration_flag.max_value}", 
+                  f"Total Cost: ${state.metrics.accumulated_cost}", 
+                  f"Total Tokens: {state.metrics.accumulated_token_usage}", 
+                  sep="\\n")
+
+        try:
+            state = asyncio.run(run_session())
+            print_conversation(state)
+        except Exception as e:
+            print(f"Error: {e}")
+            import traceback
+            traceback.print_exc()

@@ -7,7 +7,7 @@ data:
   repos: |-
     https://github.com/RHRolun/rhoai_whisper.git
     https://github.com/RHRolun/test-openhands.git
-  instructions: |-
+  prompt: |-
     Please look at the full codebase and then update the README with the following improvements, if they make sense:
     * correct any typos that you find
     * add missing language annotations on codeblocks  
