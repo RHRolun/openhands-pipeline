@@ -6,7 +6,6 @@ metadata:
 subjects:
 - kind: ServiceAccount
   name: pipeline
-  namespace: openhands-pipeline
 roleRef:
   kind: Role
   name: pipeline-role

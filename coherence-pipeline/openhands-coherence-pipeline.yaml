@@ -2,421 +2,50 @@
 apiVersion: tekton.dev/v1beta1
 kind: Pipeline
 metadata:
-  name: openhands-readme-standardizer-pipeline
+  name: openhands-coherence-pipeline
 spec:
   description: OpenHands pipeline that standardizes README files across organization repositories
   params:
-    # Organization and reference repository parameters
-    - name: org-name
-      type: string
-      description: GitHub organization name
-      default: "your-org"
-    - name: reference-repo
-      type: string
-      description: Repository with reference README style (org/repo format)
-      default: "your-org/reference-repo"
     - name: llm-model
       type: string
       description: LLM model to use
-      default: "openai/qwen/qwen3-235b-a22b-07-25:free"
-    - name: llm-base-url
-      type: string
-      description: Base URL for the LLM API
-      default: "https://openrouter.ai/api/v1"
+      default: "gemini/gemini-2.5-pro"
     - name: max-iterations
       type: string
       description: Maximum iterations for OpenHands
       default: "10"
-    - name: username
+    - name: repo-full-name
       type: string
-      description: Git username that owns the PAT
+      description: Repository full name (org/repo)
+      default: "RHRolun/test-openhands"
     - name: namespace
       type: string
       description: Namespace to run OpenHands
-  workspaces:
-    - name: workspace
-      description: Shared workspace for processing
+    - name: session-name
+      type: string
+      description: Session name for the OpenHands runtime
+      default: "openhands-coherence"
+    - name: mcp-service
+      type: string
+      description: MCP service URL and port
+      default: "openhands-mcp-git-server.openhands-coherence-pipeline.svc.cluster.local:3000"
+  # workspaces:
+  #   - name: workspace
+  #     description: Shared workspace for processing
   tasks:
-    - name: openhands-readme-standardizer
+    - name: openhands-coherence
       taskRef:
-        name: openhands-readme-standardizer
+        name: openhands-coherence
       params:
-        - name: org-name
-          value: $(params.org-name)
-        - name: reference-repo
-          value: $(params.reference-repo)
         - name: llm-model
           value: $(params.llm-model)
-        - name: llm-base-url
-          value: $(params.llm-base-url)
         - name: max-iterations
           value: $(params.max-iterations)
-        - name: username
-          value: $(params.username)
+        - name: repo-full-name
+          value: $(params.repo-full-name)
         - name: namespace
           value: $(params.namespace)
----
-apiVersion: tekton.dev/v1beta1
-kind: Task
-metadata:
-  name: openhands-readme-standardizer
-spec:
-  description: Standardize README files across organization repositories using OpenHands
-  params:
-    - name: org-name
-      type: string
-      description: GitHub organization name
-    - name: reference-repo
-      type: string
-      description: Repository with reference README style
-    - name: llm-model
-      type: string
-      description: LLM model to use
-    - name: llm-base-url
-      type: string
-      description: Base URL for the LLM API
-      default: "https://api.openai.com/v1"
-    - name: max-iterations
-      type: string
-      description: Maximum iterations
-    - name: username
-      type: string
-      description: Git username that owns the PAT
-    - name: namespace
-      type: string
-      description: Namespace for the pipeline
-  steps:
-    - name: standardize-readmes
-      image: quay.io/rlundber/openhands-main:0.2
-      env:
-        # OpenHands Configuration
-        - name: LLM_API_KEY
-          valueFrom:
-            secretKeyRef:
-              name: openhands-secrets
-              key: llm-api-key
-        - name: GITHUB_TOKEN
-          valueFrom:
-            secretKeyRef:
-              name: openhands-secrets
-              key: pat-token
-        - name: LLM_BASE_URL
-          value: $(params.llm-base-url)
-        - name: LLM_MODEL
-          value: $(params.llm-model)
-        - name: KUBERNETES_NAMESPACE
-          value: $(params.namespace)
-        - name: ORG_NAME
-          value: $(params.org-name)
-        - name: REFERENCE_REPO
-          value: $(params.reference-repo)
-        - name: USERNAME
-          value: $(params.username)
-        - name: MAX_ITERATIONS
-          value: $(params.max-iterations)
-
-      script: |
-        #!/bin/bash
-        set -e
-
-        echo "🚀 Starting README standardization..."
-        echo "Organization: $(params.org-name)"
-        echo "Reference Repository: $(params.reference-repo)"
-        echo "LLM Model: $(params.llm-model)"
-        echo "Max Iterations: $(params.max-iterations)"
-
-        # Create the Python script inline
-        cat > /tmp/readme_standardizer.py << 'EOF'
-        #!/usr/bin/env python3
-        import os
-        import json
-        import subprocess
-        import asyncio
-        import tempfile
-        import shutil
-        from pathlib import Path
-
-        def run_command(cmd, cwd=None):
-            """Run shell command and return output"""
-            result = subprocess.run(cmd, shell=True, capture_output=True, text=True, cwd=cwd)
-            if result.returncode != 0:
-                print(f"Command failed: {cmd}")
-                print(f"Error: {result.stderr}")
-            return result
-
-        def get_org_repos(org_name, token):
-            """Get all repositories in organization"""
-            print(f"Discovering repositories in organization: {org_name}")
-            
-            cmd = f'curl -H "Authorization: token {token}" -H "Accept: application/vnd.github.v3+json" "https://api.github.com/orgs/{org_name}/repos?per_page=100"'
-            result = run_command(cmd)
-            
-            if result.returncode != 0:
-                print("Failed to fetch repositories")
-                return []
-            
-            try:
-                repos_data = json.loads(result.stdout)
-                repos = [repo['full_name'] for repo in repos_data if not repo['archived']]
-                print(f"Found {len(repos)} repositories")
-                return repos
-            except json.JSONDecodeError:
-                print("Failed to parse repository data")
-                return []
-
-        def get_reference_readme(reference_repo, token):
-            """Fetch reference README content"""
-            print(f"Fetching reference README from: {reference_repo}")
-            
-            cmd = f'curl -H "Authorization: token {token}" -H "Accept: application/vnd.github.v3+json" "https://api.github.com/repos/{reference_repo}/contents/README.md"'
-            result = run_command(cmd)
-            
-            if result.returncode != 0:
-                print("Failed to fetch reference README")
-                return None
-            
-            try:
-                content_data = json.loads(result.stdout)
-                import base64
-                readme_content = base64.b64decode(content_data['content']).decode('utf-8')
-                print("Reference README fetched successfully")
-                return readme_content
-            except (json.JSONDecodeError, KeyError):
-                print("Failed to parse reference README")
-                return None
-
-        def process_repository(repo_name, reference_readme, token, username):
-            """Process a single repository's README"""
-            print(f"\n=== Processing repository: {repo_name} ===")
-            
-            with tempfile.TemporaryDirectory() as temp_dir:
-                repo_dir = Path(temp_dir) / "repo"
-                
-                # Clone repository
-                clone_url = f"https://{token}@github.com/{repo_name}.git"
-                result = run_command(f"git clone {clone_url} {repo_dir}")
-                if result.returncode != 0:
-                    print(f"Failed to clone {repo_name}")
-                    return {"repo": repo_name, "status": "clone_failed"}
-                
-                readme_path = repo_dir / "README.md"
-                if not readme_path.exists():
-                    print(f"No README.md found in {repo_name}")
-                    return {"repo": repo_name, "status": "no_readme"}
-                
-                # Read current README
-                current_readme = readme_path.read_text()
-                
-                # Use OpenHands to analyze and potentially update README
-                task_description = f"""
-                Please analyze this repository's README.md and compare it to our organization's standard style.
-
-                Current README content:
-                ```
-                {current_readme}
-                ```
-
-                Reference README style guide:
-                ```
-                {reference_readme}
-                ```
-
-                Tasks:
-                1. Compare the current README structure, formatting, and style with the reference
-                2. If improvements are needed to match the standard style, update the README.md file
-                3. Preserve all repository-specific content (project name, description, installation instructions, etc.)
-                4. Only modify formatting, structure, and style elements to match the reference
-                5. If you make changes, ensure the file is saved
-
-                Important: Only make changes if there are clear style differences. If the README already matches the style well, do not modify it.
-                """
-                
-                # Configure git in the repo
-                run_command("git config user.name 'OpenHands Bot'", cwd=repo_dir)
-                run_command(f"git config user.email '{username}@users.noreply.github.com'", cwd=repo_dir)
-                
-                # Create a simple OpenHands task file
-                task_file = repo_dir / ".openhands_task.txt"
-                task_file.write_text(task_description)
-                
-                # Use OpenHands in headless mode (simplified approach using existing resolver pattern)
-                os.chdir(repo_dir)
-                
-                # Prepare environment for OpenHands
-                env = os.environ.copy()
-                env['WORKSPACE_BASE'] = str(repo_dir)
-                
-                # Run a simplified OpenHands command that focuses on README analysis
-                openhands_cmd = f"""
-                python -c "
-                import sys
-                import os
-                sys.path.insert(0, '/app')
-
-                # Simple README standardization logic
-                reference_readme = '''
-                {reference_readme.replace("'", "\\'")}
-                '''
-                
-                current_readme = '''
-                {current_readme.replace("'", "\\'")}
-                '''
-                
-                # Basic comparison and standardization
-                lines_ref = reference_readme.strip().split('\\n')
-                lines_cur = current_readme.strip().split('\\n')
-                
-                # Check if structure needs updating
-                needs_update = False
-                
-                # Simple heuristics for README standardization
-                ref_has_badges = any('[![' in line or '[!' in line for line in lines_ref[:5])
-                cur_has_badges = any('[![' in line or '[!' in line for line in lines_cur[:5])
-                
-                ref_structure = []
-                cur_structure = []
-                
-                for line in lines_ref:
-                    if line.startswith('#'):
-                        ref_structure.append(line.strip())
-                        
-                for line in lines_cur:
-                    if line.startswith('#'):
-                        cur_structure.append(line.strip())
-                
-                # Check if header structure is significantly different
-                if len(ref_structure) > 0 and len(cur_structure) > 0:
-                    # Compare first few headers
-                    ref_pattern = [h.count('#') for h in ref_structure[:3]]
-                    cur_pattern = [h.count('#') for h in cur_structure[:3]]
-                    
-                    if ref_pattern != cur_pattern:
-                        needs_update = True
-                        print('Header structure differs from reference')
-                
-                if ref_has_badges and not cur_has_badges:
-                    needs_update = True
-                    print('Reference has badges but current README does not')
-                
-                if needs_update:
-                    print('README needs standardization')
-                    # For now, just add a standardization comment
-                    # In a full implementation, this would do more sophisticated formatting
-                    with open('README.md', 'r') as f:
-                        content = f.read()
-                    
-                    # Simple improvement: ensure proper spacing after headers
-                    import re
-                    content = re.sub(r'^(#+[^\\n]*)', r'\\1\\n', content, flags=re.MULTILINE)
-                    content = re.sub(r'\\n\\n\\n+', '\\n\\n', content)
-                    
-                    with open('README.md', 'w') as f:
-                        f.write(content)
-                    
-                    print('Applied basic formatting improvements')
-                else:
-                    print('README already follows standard style')
-                "
-                """
-                
-                result = run_command(openhands_cmd, cwd=repo_dir)
-                
-                # Check if there are changes
-                git_status = run_command("git status --porcelain", cwd=repo_dir)
-
-                print(result.stdout.strip())
-                print(git_status.stdout.strip())
-                
-                # if git_status.stdout.strip():
-                #     print("Changes detected, creating PR...")
-                    
-                #     # Create branch and commit
-                #     branch_name = "readme-standardization"
-                #     run_command(f"git checkout -b {branch_name}", cwd=repo_dir)
-                #     run_command("git add README.md", cwd=repo_dir)
-                #     run_command('git commit -m "docs: standardize README format to match org style"', cwd=repo_dir)
-                    
-                #     # Push branch
-                #     push_result = run_command(f"git push -u origin {branch_name}", cwd=repo_dir)
-                #     if push_result.returncode != 0:
-                #         print(f"Failed to push branch for {repo_name}")
-                #         return {"repo": repo_name, "status": "push_failed"}
-                    
-                #     # Create PR using GitHub API
-                #     pr_data = {
-                #         "title": "docs: standardize README format to match organization style",
-                #         "head": branch_name,
-                #         "base": "main",
-                #         "body": "This PR updates the README.md to match our organization's standard formatting and structure.\\n\\n- Applied consistent formatting\\n- Maintained all repository-specific content\\n- Follows organization README style guide"
-                #     }
-                    
-                #     pr_cmd = f'''curl -X POST -H "Authorization: token {token}" -H "Accept: application/vnd.github.v3+json" "https://api.github.com/repos/{repo_name}/pulls" -d '{json.dumps(pr_data)}' '''
-                #     pr_result = run_command(pr_cmd)
-                    
-                #     if pr_result.returncode == 0:
-                #         try:
-                #             pr_response = json.loads(pr_result.stdout)
-                #             pr_url = pr_response.get('html_url', 'PR created')
-                #             print(f"PR created: {pr_url}")
-                #             return {"repo": repo_name, "status": "pr_created", "pr_url": pr_url}
-                #         except json.JSONDecodeError:
-                #             print("PR created but failed to parse response")
-                #             return {"repo": repo_name, "status": "pr_created"}
-                #     else:
-                #         print("Failed to create PR")
-                #         return {"repo": repo_name, "status": "pr_failed"}
-                # else:
-                #     print("No changes needed")
-                #     return {"repo": repo_name, "status": "no_changes_needed"}
-
-        def main():
-            org_name = os.environ['ORG_NAME']
-            reference_repo = os.environ['REFERENCE_REPO']
-            token = os.environ['GITHUB_TOKEN']
-            username = os.environ['USERNAME']
-            
-            print(f"Starting README standardization for organization: {org_name}")
-            print(f"Using reference repository: {reference_repo}")
-            
-            # Get reference README
-            reference_readme = get_reference_readme(reference_repo, token)
-            if not reference_readme:
-                print("Failed to get reference README, aborting")
-                return
-            
-            # Get organization repositories
-            repos = get_org_repos(org_name, token)
-            if not repos:
-                print("No repositories found, aborting")
-                return
-            
-            # Process each repository
-            results = []
-            for repo in repos:
-                if repo == reference_repo:
-                    print(f"Skipping reference repository: {repo}")
-                    continue
-                    
-                result = process_repository(repo, reference_readme, token, username)
-                results.append(result)
-            
-            # Summary
-            print("\n=== SUMMARY ===")
-            for result in results:
-                status = result['status']
-                repo = result['repo']
-                if status == 'pr_created':
-                    print(f"✅ {repo}: PR created")
-                elif status == 'no_changes_needed':
-                    print(f"✅ {repo}: Already standardized")
-                else:
-                    print(f"❌ {repo}: {status}")
-
-        if __name__ == "__main__":
-            main()
-        EOF
-
-        # Run the README standardizer
-        python /tmp/readme_standardizer.py
-
-        echo "✅ README standardization completed"
+        - name: session-name
+          value: $(params.session-name)
+        - name: mcp-service
+          value: $(params.mcp-service)
