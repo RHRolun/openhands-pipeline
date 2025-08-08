@@ -45,7 +45,7 @@ spec:
 
               /tmp/tkn pipeline start openhands-coherence-pipeline \
                 --param llm-model="gemini/gemini-2.5-pro" \
-                --param max-iterations="10" \
+                --param max-iterations="50" \
                 --param repo-full-name="${repo_full_name}" \
                 --param namespace="${CURRENT_NAMESPACE}" \
                 --param session-name="$(echo "${repo_full_name}" | tr '/_' '-' | tr '[:upper:]' '[:lower:]')" \
