@@ -1,6 +1,7 @@
-# OpenHands Pipeline
+# Onboarding an OpenShift Pipeline to create a OpenShift Pull Request
 
 This repository contains the configuration for the OpenHands AI services pipelines.
+
 This project was scaffolded by the CAI team.
 
 ## Getting Started
