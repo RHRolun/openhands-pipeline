@@ -4,6 +4,8 @@ kind: Job
 metadata:
   name: typofix-pipelines
   annotations:
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
     configmap/hash: {{ include (print $.Template.BasePath "/configmap-typofix.yaml") . | sha256sum }}
 spec:
   template:
