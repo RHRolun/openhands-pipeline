@@ -10,7 +10,7 @@ spec:
   template:
     metadata:
       labels:
-        job-name: typofix
+        job-name: typofix-task-trigger
     spec:
       serviceAccountName: pipeline-trigger-sa
       containers:

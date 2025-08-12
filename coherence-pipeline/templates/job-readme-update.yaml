@@ -10,7 +10,7 @@ spec:
   template:
     metadata:
       labels:
-        job-name: readme-update
+        job-name: readme-update-task-trigger
     spec:
       serviceAccountName: pipeline-trigger-sa
       containers:
