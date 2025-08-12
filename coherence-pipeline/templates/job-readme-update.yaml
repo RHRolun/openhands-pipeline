@@ -2,16 +2,19 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: readme-update-pipelines
+  name: readme-update-task-trigger
   annotations:
     argocd.argoproj.io/sync-options: Replace=true
     configmap/hash: {{ include (print $.Template.BasePath "/configmap-readme.yaml") . | sha256sum }}
 spec:
   template:
+    metadata:
+      labels:
+        job-name: readme-update
     spec:
       serviceAccountName: pipeline-trigger-sa
       containers:
-      - name: trigger-pipelines
+      - name: trigger-task
         image: registry.redhat.io/openshift4/ose-cli:latest
         env:
         - name: PAT_TOKEN

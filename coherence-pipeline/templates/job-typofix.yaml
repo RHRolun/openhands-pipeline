@@ -2,16 +2,19 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: typofix-pipelines
+  name: typofix-task-trigger
   annotations:
     argocd.argoproj.io/sync-options: Replace=true
     configmap/hash: {{ include (print $.Template.BasePath "/configmap-typofix.yaml") . | sha256sum }}
 spec:
   template:
+    metadata:
+      labels:
+        job-name: typofix
     spec:
       serviceAccountName: pipeline-trigger-sa
       containers:
-      - name: trigger-pipelines
+      - name: trigger-task
         image: registry.redhat.io/openshift4/ose-cli:latest
         env:
         - name: PAT_TOKEN
