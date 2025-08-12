@@ -1,7 +1,8 @@
+---
 kind: ConfigMap
 apiVersion: v1
 metadata:
-  name: coherence-info
+  name: readme-update
 immutable: false
 data:
   repos: |-

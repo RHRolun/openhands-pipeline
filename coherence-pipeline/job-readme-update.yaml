@@ -1,0 +1,65 @@
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: readme-update-pipelines
+spec:
+  template:
+    spec:
+      serviceAccountName: pipeline-trigger-sa
+      containers:
+      - name: trigger-pipelines
+        image: registry.redhat.io/openshift4/ose-cli:latest
+        env:
+        - name: PAT_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: openhands-secrets
+              key: pat-token
+        - name: CURRENT_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        command:
+          - /bin/sh
+          - -c
+        args:
+          - |
+            curl -sL https://mirror.openshift.com/pub/openshift-v4/clients/pipeline/latest/tkn-linux-amd64.tar.gz | tar --no-same-owner -xzf - -C /tmp tkn 
+            chmod -R 755 /tmp/tkn
+
+            curl -sLo /tmp/jq https://github.com/stedolan/jq/releases/download/jq-1.8.1/jq-linux64
+            chmod +x /tmp/jq
+
+            set -euo pipefail
+
+            echo "going into while loop"
+
+            while IFS= read -r repo || [ -n "$repo" ]; do
+              echo "Repository: $repo"
+
+              # Extract repo full name from URL (e.g., owner/repo from https://github.com/owner/repo.git)
+              repo_full_name=$(echo "${repo}" | sed 's|.*github\.com/||' | sed 's|\.git$||')
+              
+              # Extract just the repo name (second part after /) and make it DNS compliant
+              repo_name=$(echo "${repo_full_name}" | cut -d'/' -f2 | tr '_' '-' | cut -c1-32)
+
+              /tmp/tkn task start openhands-coherence --prefix-name ${repo_name} \
+                --param llm-model="gemini/gemini-2.5-pro" \
+                --param max-iterations="50" \
+                --param repo-full-name="${repo_full_name}" \
+                --param namespace="${CURRENT_NAMESPACE}" \
+                --param session-name="$(echo "${repo_full_name}" | tr '/_' '-' | tr '[:upper:]' '[:lower:]'| cut -c1-32)" \
+                --param mcp-service="openhands-mcp-git-server.openhands-coherence-pipeline.svc.cluster.local:3000" \
+                --param configmap-name="readme-update" 
+
+            done < /mnt/config/repos
+        volumeMounts:
+          - name: coherence-config
+            mountPath: /mnt/config
+      restartPolicy: Never
+      volumes:
+        - name: coherence-config
+          configMap:
+            name: readme-update
+  backoffLimit: 2

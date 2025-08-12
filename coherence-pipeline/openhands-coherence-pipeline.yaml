@@ -1,51 +1,54 @@
----
-apiVersion: tekton.dev/v1beta1
-kind: Pipeline
-metadata:
-  name: openhands-coherence-pipeline
-spec:
-  description: OpenHands pipeline that standardizes README files across organization repositories
-  params:
-    - name: llm-model
-      type: string
-      description: LLM model to use
-      default: "gemini/gemini-2.5-pro"
-    - name: max-iterations
-      type: string
-      description: Maximum iterations for OpenHands
-      default: "10"
-    - name: repo-full-name
-      type: string
-      description: Repository full name (org/repo)
-      default: "RHRolun/test-openhands"
-    - name: namespace
-      type: string
-      description: Namespace to run OpenHands
-    - name: session-name
-      type: string
-      description: Session name for the OpenHands runtime
-      default: "openhands-coherence"
-    - name: mcp-service
-      type: string
-      description: MCP service URL and port
-      default: "openhands-mcp-git-server.openhands-coherence-pipeline.svc.cluster.local:3000"
-  # workspaces:
-  #   - name: workspace
-  #     description: Shared workspace for processing
-  tasks:
-    - name: openhands-coherence
-      taskRef:
-        name: openhands-coherence
-      params:
-        - name: llm-model
-          value: $(params.llm-model)
-        - name: max-iterations
-          value: $(params.max-iterations)
-        - name: repo-full-name
-          value: $(params.repo-full-name)
-        - name: namespace
-          value: $(params.namespace)
-        - name: session-name
-          value: $(params.session-name)
-        - name: mcp-service
-          value: $(params.mcp-service)
+# ---
+# apiVersion: tekton.dev/v1beta1
+# kind: Pipeline
+# metadata:
+#   name: openhands-coherence-pipeline
+# spec:
+#   description: OpenHands pipeline that standardizes README files across organization repositories
+#   params:
+#     - name: llm-model
+#       type: string
+#       description: LLM model to use
+#       default: "gemini/gemini-2.5-pro"
+#     - name: max-iterations
+#       type: string
+#       description: Maximum iterations for OpenHands
+#       default: "10"
+#     - name: repo-full-name
+#       type: string
+#       description: Repository full name (org/repo)
+#       default: "RHRolun/test-openhands"
+#     - name: namespace
+#       type: string
+#       description: Namespace to run OpenHands
+#     - name: session-name
+#       type: string
+#       description: Session name for the OpenHands runtime
+#       default: "openhands-coherence"
+#     - name: mcp-service
+#       type: string
+#       description: MCP service URL and port
+#       default: "openhands-mcp-git-server.openhands-coherence-pipeline.svc.cluster.local:3000"
+#     - name: configmap-name
+#       type: string
+#       description: Name of the ConfigMap containing the prompt
+#       default: "readme-update"  # or "typo-fix"
+#   tasks:
+#     - name: openhands-coherence
+#       taskRef:
+#         name: openhands-coherence
+#       params:
+#         - name: llm-model
+#           value: $(params.llm-model)
+#         - name: max-iterations
+#           value: $(params.max-iterations)
+#         - name: repo-full-name
+#           value: $(params.repo-full-name)
+#         - name: namespace
+#           value: $(params.namespace)
+#         - name: session-name
+#           value: $(params.session-name)
+#         - name: mcp-service
+#           value: $(params.mcp-service)
+#         - name: configmap-name
+#           value: "readme-update"  # or "typo-fix" based on the task

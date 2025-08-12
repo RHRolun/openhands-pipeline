@@ -1,0 +1,16 @@
+---
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: typo-fix
+immutable: false
+data:
+  repos: |-
+    https://github.com/RHRolun/rhoai_whisper.git
+    https://github.com/RHRolun/test-openhands.git
+  prompt: |-
+    Please look at the markdown files in the repository and then correct any typos that you find. If there are references to other files or other sections of the README, turn them into links.
+    
+    If there are no obvious ways to improve the README, make at least one small change to make the wording clearer or friendlier.
+
+    After that, please push the changes to GitHub and open a pull request. Please create a meaningful branch name that describes the changes. If a pull request template exists in the repository, please follow it when creating the PR description.

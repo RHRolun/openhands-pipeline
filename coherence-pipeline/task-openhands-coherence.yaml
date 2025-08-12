@@ -24,6 +24,9 @@ spec:
     - name: mcp-service
       type: string
       description: MCP service URL and port
+    - name: configmap-name
+      type: string
+      description: Name of the ConfigMap containing the prompt
   steps:
     - name: setup-and-process
       image: quay.io/rlundber/openhands-main:0.2
@@ -41,9 +44,8 @@ spec:
         - name: PROMPT
           valueFrom:
             configMapKeyRef:
-              name: coherence-info
+              name: $(params.configmap-name)
               key: prompt
-
       script: |
         #!/usr/bin/env python3
 
