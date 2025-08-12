@@ -2,7 +2,7 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: typofix-{{ include (print $.Template.BasePath "/configmap-readme.yaml") . | sha256sum | trunc 8 }}
+  name: typofix-{{ include (print $.Template.BasePath "/configmap-typofix.yaml") . | sha256sum | trunc 8 }}
   annotations:
     configmap/hash: {{ include (print $.Template.BasePath "/configmap-typofix.yaml") . | sha256sum }}
 spec:
