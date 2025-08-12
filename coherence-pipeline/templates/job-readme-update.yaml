@@ -2,15 +2,11 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: readme-update-task-trigger
+  name: readme-update-{{ include (print $.Template.BasePath "/configmap-readme.yaml") . | sha256sum | trunc 8 }}
   annotations:
-    argocd.argoproj.io/sync-options: Replace=true
     configmap/hash: {{ include (print $.Template.BasePath "/configmap-readme.yaml") . | sha256sum }}
 spec:
   template:
-    metadata:
-      labels:
-        job-name: readme-update-task-trigger
     spec:
       serviceAccountName: pipeline-trigger-sa
       containers:

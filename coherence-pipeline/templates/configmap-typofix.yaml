@@ -6,7 +6,6 @@ metadata:
 immutable: false
 data:
   repos: |-
-    https://github.com/RHRolun/rhoai_whisper.git
     https://github.com/RHRolun/test-openhands.git
   prompt: |-
     Please look at the markdown files in the repository and then correct any typos that you find. If there are references to other files or other sections of the README, turn them into links.
