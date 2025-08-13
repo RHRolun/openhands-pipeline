@@ -32,7 +32,6 @@ spec:
     - name: configmap-name
       type: string
       description: Name of the ConfigMap containing the prompt
-      default: "readme-update"  # or "typo-fix"
   tasks:
     - name: openhands-coherence
       taskRef:
@@ -51,4 +50,4 @@ spec:
         - name: mcp-service
           value: $(params.mcp-service)
         - name: configmap-name
-          value: "readme-update"  # or "typo-fix" based on the task
+          value: "$(params.configmap-name)" 
