@@ -6,7 +6,7 @@ metadata:
 immutable: false
 data:
   repos: |-
-    https://github.com/RHRolun/test-openhands.git
+    https://github.com/rh-ai-kickstart/custom-workbench-images-examples.git
   prompt: |-
     Please look at the markdown files in the repository and then correct any typos that you find. If there are references to other files or other sections of the README, turn them into links.
         
