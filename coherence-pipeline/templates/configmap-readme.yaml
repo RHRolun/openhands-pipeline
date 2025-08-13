@@ -7,7 +7,10 @@ immutable: false
 data:
   repos: |-
     https://github.com/RHRolun/test-openhands.git
+    https://github.com/RHRolun/rhoai_whisper.git
   prompt: |-
+    Look at open PRs in the repository and if there is already a PR that addresses the README, please close this task and do not make any changes.
+
     Please look at the full codebase and then update the README with the following improvements, if they make sense:
     * correct any typos that you find
     * add missing language annotations on codeblocks  
