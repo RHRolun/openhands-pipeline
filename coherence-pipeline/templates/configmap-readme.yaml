@@ -8,6 +8,7 @@ data:
   repos: |-
     https://github.com/RHRolun/test-openhands.git
     https://github.com/RHRolun/rhoai_whisper.git
+    https://github.com/rh-ai-kickstart/custom-workbench-images-examples.git
   prompt: |-
     Look at open PRs in the repository and if there is already a PR that addresses the README, please close this task and do not make any changes.
 
