@@ -1,0 +1,5 @@
+apiVersion: v2
+description: A Helm chart for OpenHands Coherence Pipeline
+name: coherence-pipeline
+type: application
+version: 0.1.0

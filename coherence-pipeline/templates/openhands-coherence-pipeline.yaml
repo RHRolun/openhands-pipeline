@@ -29,9 +29,9 @@ spec:
       type: string
       description: MCP service URL and port
       default: "openhands-mcp-git-server.openhands-coherence-pipeline.svc.cluster.local:3000"
-  # workspaces:
-  #   - name: workspace
-  #     description: Shared workspace for processing
+    - name: configmap-name
+      type: string
+      description: Name of the ConfigMap containing the prompt
   tasks:
     - name: openhands-coherence
       taskRef:
@@ -49,3 +49,5 @@ spec:
           value: $(params.session-name)
         - name: mcp-service
           value: $(params.mcp-service)
+        - name: configmap-name
+          value: "$(params.configmap-name)" 
