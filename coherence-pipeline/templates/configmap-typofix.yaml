@@ -15,4 +15,5 @@ data:
 
     After that, please push the changes to GitHub and open a pull request. 
     Please create a meaningful branch name that describes the changes. 
+    Scrape the log information to write a meaningful commit message.
     If a pull request template exists in the repository, please follow it when creating the PR description.
